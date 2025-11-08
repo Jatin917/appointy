@@ -1,0 +1,33 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model ContentItem {
+  id          Int      @id @default(autoincrement())
+  type        String   @db.VarChar(50)
+  title       String?  @db.VarChar(255)
+  description String?  @db.Text
+  content     String?  @db.Text
+  url         String?  @db.VarChar(500)
+  imageUrl    String?  @map("image_url") @db.VarChar(500)
+  metadata    Json     @default("{}")
+  labels      String[] @default([])
+  summary     String?  @db.Text
+  metaTags    Json?    @map("meta_tags")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([type])
+  @@index([createdAt(sort: Desc)])
+  @@index([labels], type: Gin)
+  @@index([metadata], type: Gin)
+  @@map("content_items")
+}

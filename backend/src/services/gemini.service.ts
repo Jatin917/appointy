@@ -11,7 +11,7 @@ class GeminiService {
       throw new Error('GEMINI_API_KEY is not set in environment variables');
     }
     this.genAI = new GoogleGenerativeAI(apiKey);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
   }
 
   /**
@@ -70,8 +70,10 @@ Only return the JSON object, no additional text.
 
   /**
    * Analyze image to extract metadata and labels
+   * @param base64Image - Base64 encoded image data
+   * @param mimeType - MIME type of the image (e.g., 'image/jpeg', 'image/png')
    */
-  async analyzeImageContent(imageUrl: string): Promise<GeminiAnalysisResult> {
+  async analyzeImageContent(base64Image: string, mimeType: string = 'image/jpeg'): Promise<GeminiAnalysisResult> {
     const prompt = `
 Analyze this image and provide a structured response in JSON format.
 
@@ -95,14 +97,12 @@ Only return the JSON object, no additional text.
 `;
 
     try {
-      // For image analysis, we need to fetch the image and convert it to the right format
-      // This is a simplified version - in production, you'd handle image fetching properly
       const result = await this.model.generateContent([
         prompt,
         {
           inlineData: {
-            mimeType: "image/jpeg",
-            data: imageUrl // In production, this should be base64 encoded image data
+            mimeType: mimeType,
+            data: base64Image
           }
         }
       ]);
@@ -179,6 +179,65 @@ Only return the JSON object, no additional text.
         generatedTitle: url,
         generatedDescription: 'A web link',
       };
+    }
+  }
+
+  /**
+   * Answer a query based on retrieved context (RAG pattern)
+   * @param query - User's search query
+   * @param contextItems - Array of relevant content items retrieved from the database
+   * @returns AI-generated answer based on the context
+   */
+  async answerQueryWithContext(query: string, contextItems: any[]): Promise<string> {
+    // Format context items into a readable format for Gemini
+    const contextText = contextItems.map((item, index) => {
+      const parts = [`[Document ${index + 1}]`];
+
+      if (item.title) parts.push(`Title: ${item.title}`);
+      if (item.type) parts.push(`Type: ${item.type}`);
+      if (item.description) parts.push(`Description: ${item.description}`);
+      if (item.content) parts.push(`Content: ${item.content}`);
+      if (item.url) parts.push(`URL: ${item.url}`);
+      if (item.imageUrl) parts.push(`Image URL: ${item.imageUrl}`);
+      if (item.labels && item.labels.length > 0) {
+        parts.push(`Labels: ${item.labels.join(', ')}`);
+      }
+      if (item.metadata) {
+        try {
+          const metadata = typeof item.metadata === 'string'
+            ? JSON.parse(item.metadata)
+            : item.metadata;
+          if (metadata.tags && metadata.tags.length > 0) {
+            parts.push(`Tags: ${metadata.tags.join(', ')}`);
+          }
+        } catch (e) {
+          // Ignore parsing errors
+        }
+      }
+
+      return parts.join('\n');
+    }).join('\n\n---\n\n');
+
+    const prompt = `You are a helpful AI assistant. Based on the following context from a knowledge base, answer the user's query.
+
+CONTEXT:
+${contextText}
+
+USER QUERY: ${query}
+
+Please provide a clear, concise, and helpful answer based ONLY on the information provided in the context above. If the context doesn't contain enough information to answer the query, say so clearly. Include relevant details, links, or references from the context when appropriate.
+
+ANSWER:`;
+
+    try {
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      const answer = response.text();
+
+      return answer.trim();
+    } catch (error) {
+      console.error('Error generating answer with Gemini:', error);
+      throw new Error('Failed to generate answer from context');
     }
   }
 }

@@ -10,3 +10,9 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Uploaded files - keep directory structure but ignore contents
+uploads/images/*
+!uploads/images/.gitkeep
+
+/src/generated/prisma
